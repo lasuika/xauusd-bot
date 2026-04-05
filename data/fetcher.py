@@ -230,21 +230,34 @@ def fetch_twelvedata(
 
     # Load existing cache to resume
     existing_df = pd.DataFrame()
+    current_end = now
     if os.path.exists(cache_path):
         existing_df = pd.read_parquet(cache_path)
         if not existing_df.empty:
+            # Strip corrupt rows
+            min_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+            existing_df = existing_df[existing_df["timestamp"] >= min_ts]
+
+            first_ts = int(existing_df["timestamp"].min())
+            first_dt = datetime.fromtimestamp(first_ts / 1000, tz=timezone.utc)
             last_ts = int(existing_df["timestamp"].max())
             last_dt = datetime.fromtimestamp(last_ts / 1000, tz=timezone.utc)
-            if last_dt >= now - timedelta(minutes=2):
+
+            if first_dt > start_dt:
+                # Fetch older historical data (going backwards from oldest cached candle)
+                current_end = first_dt - timedelta(minutes=1)
+                print(f"Resuming from {current_end.strftime('%Y-%m-%d %H:%M')} backwards to {start_dt.strftime('%Y-%m-%d')} ({len(existing_df):,} candles cached)")
+            elif last_dt < now - timedelta(minutes=2):
+                # Fetch recent candles only
+                start_dt = last_dt + timedelta(minutes=1)
+                print(f"Cache has full history. Fetching recent candles from {start_dt.strftime('%Y-%m-%d %H:%M')}...")
+            else:
                 print(f"Cache up to date. {len(existing_df):,} candles loaded.")
                 return existing_df
-            start_dt = last_dt + timedelta(minutes=1)
-            print(f"Resuming from {start_dt.strftime('%Y-%m-%d %H:%M')} ({len(existing_df):,} candles cached)")
 
     url = "https://api.twelvedata.com/time_series"
     all_rows = []
     credits_used = 0
-    current_end = now
 
     print(f"Fetching XAUUSD 1-min from Twelve Data ({start_dt.strftime('%Y-%m-%d')} -> now)...")
     print(f"Note: free tier = 800 credits/day. Each request = 5 credits (160 requests/day max).")
@@ -312,6 +325,9 @@ def fetch_twelvedata(
     combined = pd.concat([existing_df, new_df], ignore_index=True) if not existing_df.empty else new_df
     combined = combined.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
     combined["datetime"] = pd.to_datetime(combined["timestamp"], unit="ms", utc=True)
+    # Strip corrupt rows (epoch artifacts — timestamps before 2020)
+    min_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    combined = combined[combined["timestamp"] >= min_ts].reset_index(drop=True)
 
     combined.to_parquet(cache_path, index=False)
     print(f"Saved {len(combined):,} candles to {cache_path}")
@@ -326,4 +342,7 @@ def load_cached(cache_path: str = settings.CACHE_FILE) -> pd.DataFrame:
     df = pd.read_parquet(cache_path)
     if "datetime" not in df.columns:
         df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    # Drop any corrupt rows with timestamps before 2020 (epoch artifacts)
+    min_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    df = df[df["timestamp"] >= min_ts]
     return df.sort_values("timestamp").reset_index(drop=True)
