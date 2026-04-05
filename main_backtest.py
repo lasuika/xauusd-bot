@@ -13,10 +13,11 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import pandas as pd
 
-from data.fetcher import fetch_historical, fetch_yfinance, load_cached
+from data.fetcher import fetch_historical, fetch_yfinance, fetch_twelvedata, load_cached
 from strategy.indicators import add_all_indicators
 from strategy.session_filter import add_session_filter
 from strategy.signals import generate_entry_signals
@@ -81,6 +82,12 @@ def cmd_fetch(args):
     if source == "yfinance":
         yf_interval = getattr(args, "yf_interval", "1h")
         df = fetch_yfinance(interval=yf_interval)
+    elif source == "twelvedata":
+        api_key = os.environ.get("TWELVEDATA_API_KEY", "") or getattr(args, "td_key", "")
+        if not api_key:
+            print("ERROR: Set TWELVEDATA_API_KEY in your .env file or pass --td-key YOUR_KEY")
+            return
+        df = fetch_twelvedata(api_key=api_key)
     else:
         from data.fetcher import check_symbol
         check_symbol()
@@ -210,8 +217,9 @@ def main():
     parser.add_argument("--equity", type=float, default=1000.0, help="Starting equity (default: 1000)")
     parser.add_argument("--apply-best", action="store_true",
                         help="After optimization, auto-update settings.py and re-run backtest")
-    parser.add_argument("--source", choices=["bybit", "yfinance"], default="bybit",
-                        help="Data source: bybit (default) or yfinance (no API key, works anywhere)")
+    parser.add_argument("--source", choices=["bybit", "yfinance", "twelvedata"], default="bybit",
+                        help="Data source: bybit (default), yfinance (no key), twelvedata (free key)")
+    parser.add_argument("--td-key", default="", help="Twelve Data API key (or set TWELVEDATA_API_KEY in .env)")
     parser.add_argument("--yf-interval", default="1h",
                         choices=["1m", "5m", "15m", "1h", "1d"],
                         help="yfinance interval (default: 1h). 1m=7 days, 1h=2 years")

@@ -211,6 +211,114 @@ def fetch_yfinance(
     return df
 
 
+def fetch_twelvedata(
+    api_key: str,
+    years: int = settings.BACKTEST_YEARS,
+    cache_path: str = settings.CACHE_FILE,
+) -> pd.DataFrame:
+    """
+    Fetch XAUUSD 1-minute historical data from Twelve Data API.
+    Free API key at: https://twelvedata.com/register
+    Free tier: 800 credits/day. Each request (5000 bars) = 5 credits.
+    Full 2-year fetch needs ~210 requests (~1050 credits) — takes 2 runs on free tier.
+    Resumes from cache automatically on the second run.
+    """
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+
+    now = datetime.now(timezone.utc)
+    start_dt = now - timedelta(days=years * 365)
+
+    # Load existing cache to resume
+    existing_df = pd.DataFrame()
+    if os.path.exists(cache_path):
+        existing_df = pd.read_parquet(cache_path)
+        if not existing_df.empty:
+            last_ts = int(existing_df["timestamp"].max())
+            last_dt = datetime.fromtimestamp(last_ts / 1000, tz=timezone.utc)
+            if last_dt >= now - timedelta(minutes=2):
+                print(f"Cache up to date. {len(existing_df):,} candles loaded.")
+                return existing_df
+            start_dt = last_dt + timedelta(minutes=1)
+            print(f"Resuming from {start_dt.strftime('%Y-%m-%d %H:%M')} ({len(existing_df):,} candles cached)")
+
+    url = "https://api.twelvedata.com/time_series"
+    all_rows = []
+    credits_used = 0
+    current_end = now
+
+    print(f"Fetching XAUUSD 1-min from Twelve Data ({start_dt.strftime('%Y-%m-%d')} -> now)...")
+    print(f"Note: free tier = 800 credits/day. Each request = 5 credits (160 requests/day max).")
+
+    while current_end > start_dt:
+        params = {
+            "symbol": "XAU/USD",
+            "interval": "1min",
+            "outputsize": 5000,
+            "end_date": current_end.strftime("%Y-%m-%d %H:%M:%S"),
+            "timezone": "UTC",
+            "apikey": api_key,
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            data = resp.json()
+
+            if data.get("status") == "error":
+                msg = data.get("message", "unknown error")
+                if "credits" in msg.lower() or "limit" in msg.lower():
+                    print(f"\nDaily credit limit reached ({credits_used * 5} credits used).")
+                    print(f"Run again tomorrow to continue. Cache saved with {len(all_rows) + len(existing_df):,} candles.")
+                    break
+                else:
+                    print(f"  API error: {msg}")
+                    break
+
+            values = data.get("values", [])
+            if not values:
+                break
+
+            credits_used += 1
+            for v in values:
+                dt = datetime.strptime(v["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if dt < start_dt:
+                    continue
+                all_rows.append({
+                    "timestamp": int(dt.timestamp() * 1000),
+                    "open":   float(v["open"]),
+                    "high":   float(v["high"]),
+                    "low":    float(v["low"]),
+                    "close":  float(v["close"]),
+                    "volume": float(v.get("volume", 0)),
+                })
+
+            # Move window back to before the oldest candle in this batch
+            oldest = datetime.strptime(values[-1]["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            current_end = oldest - timedelta(minutes=1)
+
+            fetched_total = len(all_rows) + len(existing_df)
+            print(f"  {fetched_total:,} candles fetched ({credits_used * 5} credits used)...", end="\r")
+            time.sleep(0.5)  # respect rate limit
+
+        except Exception as e:
+            print(f"\nRequest error: {e}")
+            break
+
+    print(f"\nFetched {len(all_rows):,} new candles.")
+
+    if not all_rows:
+        return existing_df
+
+    new_df = pd.DataFrame(all_rows).sort_values("timestamp").reset_index(drop=True)
+
+    combined = pd.concat([existing_df, new_df], ignore_index=True) if not existing_df.empty else new_df
+    combined = combined.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+    combined["datetime"] = pd.to_datetime(combined["timestamp"], unit="ms", utc=True)
+
+    combined.to_parquet(cache_path, index=False)
+    print(f"Saved {len(combined):,} candles to {cache_path}")
+    print(f"Date range: {combined['datetime'].min().strftime('%Y-%m-%d')} -> {combined['datetime'].max().strftime('%Y-%m-%d')}")
+    return combined
+
+
 def load_cached(cache_path: str = settings.CACHE_FILE) -> pd.DataFrame:
     """Load cached data without fetching."""
     if not os.path.exists(cache_path):
