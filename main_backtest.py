@@ -51,7 +51,7 @@ def _apply_best_params(best) -> None:
     """Overwrite config/settings.py with the best optimization parameters."""
     import re
     path = "config/settings.py"
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         content = f.read()
 
     replacements = {
@@ -65,7 +65,7 @@ def _apply_best_params(best) -> None:
     for pattern, replacement in replacements.items():
         content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
     print(f"\nconfig/settings.py updated with best parameters:")
