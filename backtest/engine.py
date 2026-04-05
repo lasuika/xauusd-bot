@@ -188,6 +188,7 @@ def run_optimization(df: pd.DataFrame,
     results = []
     grid = list(product(
         settings.OPT_BB_PERIODS,
+        settings.OPT_BB_STDS,
         settings.OPT_RSI_OVERSOLD,
         settings.OPT_RSI_OVERBOUGHT,
         settings.OPT_ATR_SL_MULT,
@@ -196,9 +197,9 @@ def run_optimization(df: pd.DataFrame,
 
     print(f"Running grid search over {len(grid)} parameter combinations...")
 
-    for idx, (bb_p, rsi_os, rsi_ob, sl_m, vol_m) in enumerate(grid):
+    for idx, (bb_p, bb_std, rsi_os, rsi_ob, sl_m, vol_m) in enumerate(grid):
         try:
-            d = add_all_indicators(df, bb_period=bb_p, vol_multiplier=vol_m)
+            d = add_all_indicators(df, bb_period=bb_p, bb_std=bb_std, vol_multiplier=vol_m)
             d = add_session_filter(d)
             d = generate_entry_signals(d, rsi_oversold=rsi_os, rsi_overbought=rsi_ob)
             d = d.dropna().reset_index(drop=True)
@@ -207,8 +208,13 @@ def run_optimization(df: pd.DataFrame,
                                   tp_mult=sl_m * settings.ATR_TP_MULTIPLIER)
             m = compute_metrics(result)
 
+            # Skip results with too few trades — not statistically meaningful
+            if m["total_trades"] < 10:
+                continue
+
             results.append({
                 "bb_period": bb_p,
+                "bb_std": bb_std,
                 "rsi_oversold": rsi_os,
                 "rsi_overbought": rsi_ob,
                 "sl_mult": sl_m,
@@ -218,7 +224,7 @@ def run_optimization(df: pd.DataFrame,
         except Exception:
             continue
 
-        if (idx + 1) % 10 == 0:
+        if (idx + 1) % 20 == 0:
             print(f"  {idx + 1}/{len(grid)} combinations tested...", end="\r")
 
     print(f"\nOptimization complete. {len(results)} valid results.")

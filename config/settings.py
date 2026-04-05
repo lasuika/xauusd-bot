@@ -18,14 +18,14 @@ BB_PERIOD = 20
 BB_STD = 2.0
 
 RSI_PERIOD = 14
-RSI_OVERSOLD = 28       # long entry threshold
-RSI_OVERBOUGHT = 72     # short entry threshold
+RSI_OVERSOLD = 28
+RSI_OVERBOUGHT = 72
 
-VOLUME_MULTIPLIER = 1.5         # current vol must be > X * rolling avg
+VOLUME_MULTIPLIER = 1.5
 VOLUME_ROLLING_PERIOD = 20
 
 ATR_PERIOD = 14
-ATR_SL_MULTIPLIER = 1.0         # SL = entry ± (ATR * this)
+ATR_SL_MULTIPLIER = 1.0
 ATR_TP_MULTIPLIER = 0.8         # TP = entry ± (ATR * this)  → 0.8:1 RR
 
 # ── Trend filter (EMA-based — only trade WITH the trend) ─────────────────────
@@ -75,8 +75,9 @@ WALKFORWARD_TEST_MONTHS = 6
 
 # ── Parameter optimization grid ───────────────────────────────────────────────
 OPT_BB_PERIODS = [15, 17, 20, 23, 25]
-OPT_RSI_OVERSOLD = [25, 27, 28, 30]
-OPT_RSI_OVERBOUGHT = [70, 72, 73, 75]
+OPT_BB_STDS    = [1.5, 1.8, 2.0, 2.2]   # wider bands = more signals in trending markets
+OPT_RSI_OVERSOLD = [27, 28, 30, 32]      # slightly relaxed to catch more dips
+OPT_RSI_OVERBOUGHT = [68, 70, 72, 75]
 OPT_ATR_SL_MULT = [0.8, 1.0, 1.2, 1.5]
 OPT_VOLUME_MULT = [1.2, 1.5, 1.8, 2.0]
 

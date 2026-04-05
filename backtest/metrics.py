@@ -78,7 +78,7 @@ def compute_metrics(result: dict) -> dict:
 def _empty_metrics() -> dict:
     return {
         "total_trades": 0, "win_rate": 0, "profit_factor": 0,
-        "total_return": 0, "max_drawdown": 0, "sharpe": 0,
+        "total_return": 0, "max_drawdown": 0, "sharpe": -999,  # sorts to bottom
         "avg_win": 0, "avg_loss": 0, "rr_actual": 0,
         "trades_per_week": 0, "avg_duration_candles": 0,
         "final_equity": 0, "exit_tp": 0, "exit_sl": 0, "exit_smart": 0,

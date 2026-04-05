@@ -57,6 +57,7 @@ def _apply_best_params(best) -> None:
 
     replacements = {
         r"^BB_PERIOD\s*=.*$":         f"BB_PERIOD = {int(best['bb_period'])}",
+        r"^BB_STD\s*=.*$":            f"BB_STD = {best.get('bb_std', 2.0)}",
         r"^RSI_OVERSOLD\s*=.*$":      f"RSI_OVERSOLD = {best['rsi_oversold']}",
         r"^RSI_OVERBOUGHT\s*=.*$":    f"RSI_OVERBOUGHT = {best['rsi_overbought']}",
         r"^ATR_SL_MULTIPLIER\s*=.*$": f"ATR_SL_MULTIPLIER = {best['sl_mult']}",
@@ -70,7 +71,8 @@ def _apply_best_params(best) -> None:
         f.write(content)
 
     print(f"\nconfig/settings.py updated with best parameters:")
-    print(f"  BB_PERIOD={int(best['bb_period'])}  RSI={best['rsi_oversold']}/{best['rsi_overbought']}"
+    print(f"  BB_PERIOD={int(best['bb_period'])}  BB_STD={best.get('bb_std',2.0)}"
+          f"  RSI={best['rsi_oversold']}/{best['rsi_overbought']}"
           f"  SL_MULT={best['sl_mult']}  VOL_MULT={best['vol_mult']}")
 
 
@@ -147,7 +149,7 @@ def cmd_optimize(args):
 
     print("\nTop 10 parameter combinations by Sharpe Ratio:")
     print("-" * 90)
-    cols = ["bb_period", "rsi_oversold", "rsi_overbought", "sl_mult", "vol_mult",
+    cols = ["bb_period", "bb_std", "rsi_oversold", "rsi_overbought", "sl_mult", "vol_mult",
             "win_rate", "sharpe", "profit_factor", "max_drawdown", "trades_per_week"]
     print(results[cols].head(10).to_string(index=False))
 
