@@ -20,7 +20,7 @@ import pandas as pd
 from data.fetcher import fetch_historical, fetch_yfinance, fetch_twelvedata, load_cached
 from strategy.indicators import add_all_indicators
 from strategy.session_filter import add_session_filter
-from strategy.signals import generate_entry_signals
+from strategy.signals import generate_entry_signals, compute_exit_levels
 from backtest.engine import run_backtest, run_walkforward, run_optimization
 from backtest.metrics import compute_metrics, print_metrics
 from backtest.reporter import generate_full_report
@@ -145,11 +145,13 @@ def cmd_optimize(args):
     # Use base indicators only — optimizer will recompute per combination
     df = df.dropna().reset_index(drop=True)
 
-    results = run_optimization(df, initial_equity=args.equity)
+    strats = getattr(args, "strategy", None)
+    strat_list = [strats] if strats else None
+    results = run_optimization(df, initial_equity=args.equity, strategies=strat_list)
 
     print("\nTop 10 parameter combinations by Sharpe Ratio:")
     print("-" * 90)
-    cols = ["bb_period", "bb_std", "rsi_oversold", "rsi_overbought", "sl_mult", "vol_mult",
+    cols = ["strategy", "bb_period", "bb_std", "rsi_oversold", "rsi_overbought", "sl_mult", "vol_mult",
             "win_rate", "sharpe", "profit_factor", "max_drawdown", "trades_per_week"]
     print(results[cols].head(10).to_string(index=False))
 
@@ -161,7 +163,9 @@ def cmd_optimize(args):
     # Print best params
     best = results.iloc[0]
     print("\n[BEST PARAMETERS]")
+    print(f"  Strategy      : {best.get('strategy', 'mean_reversion')}")
     print(f"  BB Period     : {int(best['bb_period'])}")
+    print(f"  BB Std        : {best.get('bb_std', 2.0)}")
     print(f"  RSI Oversold  : {best['rsi_oversold']}")
     print(f"  RSI Overbought: {best['rsi_overbought']}")
     print(f"  ATR SL Mult   : {best['sl_mult']}")
@@ -174,6 +178,8 @@ def cmd_optimize(args):
         print("\nRe-running backtest with best parameters...")
         df2 = load_cached()
         df2 = prepare_data(df2)
+        df2 = generate_entry_signals(df2, strategy=best.get("strategy", "mean_reversion"))
+        df2 = df2.dropna().reset_index(drop=True)
         result = run_backtest(df2, initial_equity=args.equity,
                               sl_mult=best["sl_mult"],
                               tp_mult=best["sl_mult"] * settings.ATR_TP_MULTIPLIER)
@@ -217,6 +223,8 @@ def main():
     parser.add_argument("--walkforward", action="store_true", help="Run walk-forward validation")
     parser.add_argument("--optimize", action="store_true", help="Run parameter grid search")
     parser.add_argument("--equity", type=float, default=1000.0, help="Starting equity (default: 1000)")
+    parser.add_argument("--strategy", choices=["mean_reversion", "vwap_rsi", "ema_momentum"],
+                        default=None, help="Test only one strategy (default: test all 3)")
     parser.add_argument("--apply-best", action="store_true",
                         help="After optimization, auto-update settings.py and re-run backtest")
     parser.add_argument("--source", choices=["bybit", "yfinance", "twelvedata"], default="bybit",

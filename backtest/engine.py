@@ -175,15 +175,20 @@ def run_walkforward(df: pd.DataFrame,
 
 
 def run_optimization(df: pd.DataFrame,
-                     initial_equity: float = 1000.0) -> pd.DataFrame:
+                     initial_equity: float = 1000.0,
+                     strategies: list = None) -> pd.DataFrame:
     """
-    Grid search over parameter combinations. Returns ranked results by Sharpe.
+    Grid search over parameter combinations across all strategies.
+    Returns ranked results by Sharpe.
     """
     from itertools import product
     from backtest.metrics import compute_metrics
     from strategy.indicators import add_all_indicators
     from strategy.session_filter import add_session_filter
     from strategy.signals import generate_entry_signals
+
+    if strategies is None:
+        strategies = ["mean_reversion", "vwap_rsi", "ema_momentum"]
 
     results = []
     grid = list(product(
@@ -195,37 +200,43 @@ def run_optimization(df: pd.DataFrame,
         settings.OPT_VOLUME_MULT,
     ))
 
-    print(f"Running grid search over {len(grid)} parameter combinations...")
+    total = len(grid) * len(strategies)
+    print(f"Running grid search: {len(grid)} param combos x {len(strategies)} strategies = {total} tests...")
 
-    for idx, (bb_p, bb_std, rsi_os, rsi_ob, sl_m, vol_m) in enumerate(grid):
-        try:
-            d = add_all_indicators(df, bb_period=bb_p, bb_std=bb_std, vol_multiplier=vol_m)
-            d = add_session_filter(d)
-            d = generate_entry_signals(d, rsi_oversold=rsi_os, rsi_overbought=rsi_ob)
-            d = d.dropna().reset_index(drop=True)
+    tested = 0
+    for strategy in strategies:
+        print(f"\n  Testing strategy: {strategy}")
+        for bb_p, bb_std, rsi_os, rsi_ob, sl_m, vol_m in grid:
+            try:
+                d = add_all_indicators(df, bb_period=bb_p, bb_std=bb_std, vol_multiplier=vol_m)
+                d = add_session_filter(d)
+                d = generate_entry_signals(d, rsi_oversold=rsi_os,
+                                           rsi_overbought=rsi_ob, strategy=strategy)
+                d = d.dropna().reset_index(drop=True)
 
-            result = run_backtest(d, initial_equity=initial_equity, sl_mult=sl_m,
-                                  tp_mult=sl_m * settings.ATR_TP_MULTIPLIER)
-            m = compute_metrics(result)
+                result = run_backtest(d, initial_equity=initial_equity, sl_mult=sl_m,
+                                      tp_mult=sl_m * settings.ATR_TP_MULTIPLIER)
+                m = compute_metrics(result)
 
-            # Skip results with too few trades — not statistically meaningful
-            if m["total_trades"] < 10:
-                continue
+                if m["total_trades"] < 10:
+                    tested += 1
+                    continue
 
-            results.append({
-                "bb_period": bb_p,
-                "bb_std": bb_std,
-                "rsi_oversold": rsi_os,
-                "rsi_overbought": rsi_ob,
-                "sl_mult": sl_m,
-                "vol_mult": vol_m,
-                **m,
-            })
-        except Exception:
-            continue
-
-        if (idx + 1) % 20 == 0:
-            print(f"  {idx + 1}/{len(grid)} combinations tested...", end="\r")
+                results.append({
+                    "strategy": strategy,
+                    "bb_period": bb_p,
+                    "bb_std": bb_std,
+                    "rsi_oversold": rsi_os,
+                    "rsi_overbought": rsi_ob,
+                    "sl_mult": sl_m,
+                    "vol_mult": vol_m,
+                    **m,
+                })
+            except Exception:
+                pass
+            tested += 1
+            if tested % 50 == 0:
+                print(f"  {tested}/{total} tested...", end="\r")
 
     print(f"\nOptimization complete. {len(results)} valid results.")
     results_df = pd.DataFrame(results).sort_values("sharpe", ascending=False)

@@ -13,6 +13,9 @@ SYMBOL = "XAUUSDT"
 INTERVAL = "1"          # 1-minute candles
 LEVERAGE = 20           # default leverage (10 / 20 / 40)
 
+# ── Active strategy — options: mean_reversion | vwap_rsi | ema_momentum ──────
+STRATEGY = "mean_reversion"
+
 # ── Strategy parameters (tuned by optimizer) ─────────────────────────────────
 BB_PERIOD = 20
 BB_STD = 2.0
@@ -27,6 +30,9 @@ VOLUME_ROLLING_PERIOD = 20
 ATR_PERIOD = 14
 ATR_SL_MULTIPLIER = 1.0
 ATR_TP_MULTIPLIER = 0.8         # TP = entry ± (ATR * this)  → 0.8:1 RR
+
+# ── VWAP strategy settings ────────────────────────────────────────────────────
+VWAP_STD_THRESHOLD = 1.5        # price must be X std devs from VWAP to enter
 
 # ── Trend filter (EMA-based — only trade WITH the trend) ─────────────────────
 TREND_EMA_FAST = 50             # fast EMA period
