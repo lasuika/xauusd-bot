@@ -90,11 +90,21 @@ def fetch_historical(
 
     print(f"Fetching ~{total_expected:,} candles for {symbol} ({years}y of 1m data)...")
 
+    consecutive_empty = 0
     while current_start < now_ms:
         current_end = min(current_start + chunk_ms, now_ms)
         chunk = _fetch_chunk(symbol, interval, current_start, current_end)
         if not chunk:
-            break
+            consecutive_empty += 1
+            current_start = current_end + 1  # skip ahead instead of stopping
+            if consecutive_empty == 1:
+                print(f"  No data at {datetime.fromtimestamp(current_start/1000, tz=timezone.utc).strftime('%Y-%m-%d')} — skipping forward...")
+            if consecutive_empty >= 50:  # give up after 50 empty chunks (~35 days of gaps)
+                print(f"  50 consecutive empty chunks — stopping.")
+                break
+            time.sleep(0.05)
+            continue
+        consecutive_empty = 0
         all_rows.extend(chunk)
         current_start = current_end + 1
         fetched = len(all_rows)
