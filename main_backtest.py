@@ -31,12 +31,14 @@ def prepare_data(df: pd.DataFrame,
                  bb_period: int = settings.BB_PERIOD,
                  rsi_oversold: float = settings.RSI_OVERSOLD,
                  rsi_overbought: float = settings.RSI_OVERBOUGHT,
-                 vol_multiplier: float = settings.VOLUME_MULTIPLIER) -> pd.DataFrame:
+                 vol_multiplier: float = settings.VOLUME_MULTIPLIER,
+                 strategy: str = settings.STRATEGY) -> pd.DataFrame:
     """Add all indicators + signals, drop NaN rows."""
     print("Computing indicators...")
     df = add_all_indicators(df, bb_period=bb_period, vol_multiplier=vol_multiplier)
     df = add_session_filter(df)
-    df = generate_entry_signals(df, rsi_oversold=rsi_oversold, rsi_overbought=rsi_overbought)
+    df = generate_entry_signals(df, rsi_oversold=rsi_oversold, rsi_overbought=rsi_overbought,
+                                strategy=strategy)
     df = df.dropna(subset=["BB_lower", "BB_upper", "RSI", "ATR"]).reset_index(drop=True)
     print(f"Data ready: {len(df):,} candles with indicators")
 
@@ -177,8 +179,14 @@ def cmd_optimize(args):
         _apply_best_params(best)
         print("\nRe-running backtest with best parameters...")
         df2 = load_cached()
-        df2 = prepare_data(df2)
-        df2 = generate_entry_signals(df2, strategy=best.get("strategy", "mean_reversion"))
+        df2 = prepare_data(
+            df2,
+            bb_period=int(best["bb_period"]),
+            rsi_oversold=best["rsi_oversold"],
+            rsi_overbought=best["rsi_overbought"],
+            vol_multiplier=best["vol_mult"],
+            strategy=best.get("strategy", "mean_reversion"),
+        )
         df2 = df2.dropna().reset_index(drop=True)
         result = run_backtest(df2, initial_equity=args.equity,
                               sl_mult=best["sl_mult"],
