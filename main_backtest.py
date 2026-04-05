@@ -82,7 +82,13 @@ def cmd_fetch(args):
         yf_interval = getattr(args, "yf_interval", "1h")
         df = fetch_yfinance(interval=yf_interval)
     else:
+        from data.fetcher import check_symbol
+        check_symbol()
         df = fetch_historical()
+
+    if df.empty or "datetime" not in df.columns:
+        print("\nNo data fetched. See API check above for details.")
+        return
     print(f"\nData range: {df['datetime'].min()} -> {df['datetime'].max()}")
     print(f"Total candles: {len(df):,}")
 

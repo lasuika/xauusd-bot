@@ -13,11 +13,23 @@ from datetime import datetime, timezone, timedelta
 from config import settings
 
 
-def _fetch_chunk(symbol: str, interval: str, start_ms: int, end_ms: int) -> list:
+def check_symbol(symbol: str = settings.SYMBOL) -> None:
+    """Quick check to verify the symbol exists and API is reachable."""
+    url = "https://api.bybit.com/v5/market/kline"
+    params = {"category": "linear", "symbol": symbol, "interval": "1", "limit": 1}
+    resp = requests.get(url, params=params, timeout=10)
+    data = resp.json()
+    print(f"API check: retCode={data.get('retCode')}  retMsg={data.get('retMsg')}")
+    rows = data.get("result", {}).get("list", [])
+    print(f"Sample candle: {rows[0] if rows else 'NONE — symbol may not exist on Bybit linear'}")
+
+
+def _fetch_chunk(symbol: str, interval: str, start_ms: int, end_ms: int,
+                 category: str = "linear") -> list:
     """Fetch one chunk of kline data from Bybit REST API."""
     url = "https://api.bybit.com/v5/market/kline"
     params = {
-        "category": "linear",
+        "category": category,
         "symbol": symbol,
         "interval": interval,
         "start": start_ms,
@@ -31,6 +43,9 @@ def _fetch_chunk(symbol: str, interval: str, start_ms: int, end_ms: int) -> list
             data = resp.json()
             if data.get("retCode") == 0:
                 return data["result"]["list"]
+            else:
+                print(f"  API error: {data.get('retMsg')} (retCode={data.get('retCode')})")
+                return []
         except Exception as e:
             if attempt == 2:
                 raise
@@ -176,7 +191,8 @@ def fetch_yfinance(
         "volume":   raw["Volume"].astype("float64"),
     })
 
-    df["timestamp"] = (df["datetime"].astype("int64") // 10**6)
+    # Use .timestamp() for reliable ms conversion regardless of pandas datetime precision
+    df["timestamp"] = df["datetime"].apply(lambda x: int(x.timestamp() * 1000))
     df = df.sort_values("timestamp").reset_index(drop=True)
 
     df.to_parquet(cache_path, index=False)
